@@ -1,0 +1,71 @@
+name: rag-platform
+
+services:
+  nginx:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: nginx
+  dashboard-web:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: dashboard-web
+  platform-api:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: platform-api
+  rag-engine:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: rag-engine
+  reranker:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: reranker
+  celery-worker:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: celery-worker
+  celery-beat:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: celery-beat
+  ops-agent:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: ops-agent
+  postgres:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: postgres
+  redis:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: redis
+  kafka:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: kafka
+  minio:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: minio
+  minio-init:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: minio-init
+  etcd:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: etcd
+  milvus:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: milvus
+  elasticsearch:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: elasticsearch
+  tika:
+    extends:
+      file: ./two-server/app-node/docker-compose.yml
+      service: tika

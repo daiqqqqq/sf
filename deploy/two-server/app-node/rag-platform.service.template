@@ -1,0 +1,15 @@
+[Unit]
+Description=__SERVICE_NAME__ docker compose stack
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__APP_ROOT__/deploy/two-server/app-node
+ExecStart=/usr/bin/docker compose --env-file __ENV_FILE__ -f __APP_ROOT__/deploy/two-server/app-node/docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose --env-file __ENV_FILE__ -f __APP_ROOT__/deploy/two-server/app-node/docker-compose.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
