@@ -2,6 +2,9 @@
 
 这个目录用于在 `192.168.110.117` 上直接部署应用服务器节点。
 
+可直接逐条执行并勾选的上线手册见  
+[RUNBOOK_117.md](/d:/study/1/sf/deploy/two-server/app-node/RUNBOOK_117.md)
+
 ## 推荐顺序
 
 1. 将仓库放到目标目录，例如 `/opt/rag-platform/app`
@@ -45,4 +48,3 @@ docker compose --env-file .env -f docker-compose.yml ps
 docker compose --env-file .env -f docker-compose.yml logs -f --tail=100 nginx platform-api rag-engine celery-worker
 docker compose --env-file .env -f docker-compose.yml restart platform-api rag-engine celery-worker
 ```
-

@@ -41,6 +41,7 @@ cp .env.example .env
 6. 浏览器打开 `http://192.168.110.117/`
 
 更详细的服务器侧说明见 [deploy/two-server/app-node/README.md](/d:/study/1/sf/deploy/two-server/app-node/README.md)。
+可勾选的逐条上线执行手册见 [deploy/two-server/app-node/RUNBOOK_117.md](/d:/study/1/sf/deploy/two-server/app-node/RUNBOOK_117.md)。
 
 ## 本地开发说明
 
