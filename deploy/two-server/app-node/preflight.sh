@@ -58,7 +58,7 @@ fi
 docker compose --env-file "${ENV_FILE}" -f "${SCRIPT_DIR}/docker-compose.yml" config >/dev/null
 
 mem_gb="$(free -g | awk '/^Mem:/ {print $2}')"
-disk_gb="$(df -BG "${persist_probe}" | awk 'NR==2 {gsub(/G/, \"\", $4); print $4}')"
+disk_gb="$(df -BG "${persist_probe}" | awk 'NR==2 {gsub(/G/, "", $4); print $4}')"
 vm_map_count="$(sysctl -n vm.max_map_count)"
 
 echo "Memory: ${mem_gb}G"

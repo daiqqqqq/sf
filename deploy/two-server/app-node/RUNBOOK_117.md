@@ -112,7 +112,7 @@ grep -E "^(OLLAMA_BASE_URL|VLLM_QWEN27_BASE_URL|VLLM_QWEN35_BASE_URL)=" .env
 ```bash
 echo "${NEW_ADMIN_PASSWORD}"
 ```
-
+admin password ： admin123
 ---
 
 ## 3. 主机初始化（Docker、sysctl、目录、自启模板）
