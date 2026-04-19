@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math
+import logging
 from typing import Any
 
 import httpx
@@ -13,14 +13,16 @@ from app.schemas.api import RagChunkResult
 from app.utils.text import chunk_text, lexical_score
 
 try:
-    from elasticsearch import Elasticsearch
+    from haystack import Document as HaystackDocument
+    from haystack import Pipeline
+    from haystack.components.preprocessors import DocumentCleaner
+    from haystack.components.retrievers.in_memory import InMemoryBM25Retriever
+    from haystack.document_stores.in_memory import InMemoryDocumentStore
 except Exception:  # pragma: no cover - optional dependency behavior
-    Elasticsearch = None  # type: ignore[assignment]
+    HaystackDocument = Pipeline = DocumentCleaner = InMemoryBM25Retriever = InMemoryDocumentStore = None  # type: ignore[assignment]
 
-try:
-    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
-except Exception:  # pragma: no cover - optional dependency behavior
-    Collection = CollectionSchema = DataType = FieldSchema = connections = utility = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 
 class RagService:
@@ -33,8 +35,10 @@ class RagService:
         if kb is None:
             raise ValueError(f"Knowledge base {kb_id} not found")
 
+        prepared_text = self._clean_text_with_haystack(text)
         self.db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
-        chunks = chunk_text(text, kb.chunk_size, kb.chunk_overlap)
+        chunks = chunk_text(prepared_text, kb.chunk_size, kb.chunk_overlap)
+
         total = 0
         for index, chunk in enumerate(chunks):
             item = DocumentChunk(
@@ -43,7 +47,7 @@ class RagService:
                 chunk_index=index,
                 content=chunk,
                 score_hint=len(chunk),
-                metadata_json={"source": "database", "chunk_index": index},
+                metadata_json={"source": "haystack", "chunk_index": index},
             )
             self.db.add(item)
             total += 1
@@ -51,53 +55,100 @@ class RagService:
 
         document = self.db.get(Document, document_id)
         if document is not None:
-            document.extracted_text = text
+            document.extracted_text = prepared_text
             document.status = "indexed"
             self.db.commit()
 
-        self._try_sync_elasticsearch(document_id=document_id, kb_id=kb_id)
         return total
-
-    def _try_sync_elasticsearch(self, *, document_id: int, kb_id: int) -> None:
-        if Elasticsearch is None:
-            return
-        try:
-            client = Elasticsearch(self.settings.elasticsearch_url)
-            if not client.indices.exists(index=self.settings.elasticsearch_index):
-                client.indices.create(
-                    index=self.settings.elasticsearch_index,
-                    mappings={
-                        "properties": {
-                            "kb_id": {"type": "integer"},
-                            "document_id": {"type": "integer"},
-                            "chunk_index": {"type": "integer"},
-                            "content": {"type": "text"},
-                        }
-                    },
-                )
-            rows = list(
-                self.db.scalars(
-                    select(DocumentChunk).where(DocumentChunk.document_id == document_id, DocumentChunk.kb_id == kb_id)
-                )
-            )
-            for row in rows:
-                client.index(
-                    index=self.settings.elasticsearch_index,
-                    id=f"{row.document_id}-{row.chunk_index}",
-                    document={
-                        "kb_id": row.kb_id,
-                        "document_id": row.document_id,
-                        "chunk_index": row.chunk_index,
-                        "content": row.content,
-                    },
-                )
-        except Exception:
-            return
 
     def search(self, *, kb_id: int, query: str, top_k: int = 6) -> tuple[list[RagChunkResult], dict[str, Any]]:
         db_rows = list(self.db.scalars(select(DocumentChunk).where(DocumentChunk.kb_id == kb_id)))
+        if not db_rows:
+            return [], {"db_candidates": 0, "reranked": 0, "strategy": "haystack-bm25+reranker"}
+
+        haystack_results = self._search_with_haystack(query=query, rows=db_rows, top_k=top_k)
+        candidates = haystack_results if haystack_results else self._fallback_lexical_results(query=query, rows=db_rows)
+        reranked = self._try_rerank(
+            query=query,
+            results=candidates[: max(top_k * self.settings.haystack_candidate_multiplier, 6)],
+        )
+        strategy = "haystack-bm25+reranker" if haystack_results else "db-lexical+reranker"
+        return reranked[:top_k], {
+            "db_candidates": len(db_rows),
+            "reranked": len(reranked),
+            "strategy": strategy,
+        }
+
+    def _clean_text_with_haystack(self, text: str) -> str:
+        cleaned = " ".join((text or "").split()).strip()
+        if not cleaned or DocumentCleaner is None or HaystackDocument is None:
+            return cleaned
+        try:
+            cleaner = DocumentCleaner()
+            result = cleaner.run(documents=[HaystackDocument(content=cleaned)])
+            documents = result.get("documents", [])
+            if documents and documents[0].content:
+                return documents[0].content.strip()
+        except Exception:
+            logger.exception("Haystack cleaning failed, falling back to basic normalization")
+        return cleaned
+
+    def _search_with_haystack(self, *, query: str, rows: list[DocumentChunk], top_k: int) -> list[RagChunkResult]:
+        if (
+            HaystackDocument is None
+            or InMemoryDocumentStore is None
+            or InMemoryBM25Retriever is None
+            or Pipeline is None
+        ):
+            return []
+        try:
+            document_store = InMemoryDocumentStore()
+            candidate_count = max(top_k * self.settings.haystack_candidate_multiplier, 6)
+            haystack_documents = [
+                HaystackDocument(
+                    id=str(row.id),
+                    content=row.content,
+                    meta={
+                        "chunk_id": row.id,
+                        "document_id": row.document_id,
+                        "source": row.metadata_json.get("source", "haystack"),
+                        **row.metadata_json,
+                    },
+                )
+                for row in rows
+            ]
+            document_store.write_documents(haystack_documents)
+
+            retriever = InMemoryBM25Retriever(document_store=document_store, top_k=candidate_count)
+            pipeline = Pipeline()
+            pipeline.add_component("retriever", retriever)
+            response = pipeline.run({"retriever": {"query": query}})
+            documents = response.get("retriever", {}).get("documents", [])
+
+            results: list[RagChunkResult] = []
+            for item in documents:
+                metadata = dict(item.meta or {})
+                chunk_id = int(metadata.get("chunk_id", item.id))
+                score = float(item.score or 0.0)
+                metadata["haystack_score"] = score
+                results.append(
+                    RagChunkResult(
+                        chunk_id=chunk_id,
+                        document_id=int(metadata.get("document_id", 0)),
+                        score=score,
+                        source=str(metadata.get("source", "haystack")),
+                        content=item.content,
+                        metadata=metadata,
+                    )
+                )
+            return results
+        except Exception:
+            logger.exception("Haystack retrieval failed, falling back to lexical search")
+            return []
+
+    def _fallback_lexical_results(self, *, query: str, rows: list[DocumentChunk]) -> list[RagChunkResult]:
         scored: list[RagChunkResult] = []
-        for row in db_rows:
+        for row in rows:
             score = lexical_score(query, row.content)
             if score <= 0:
                 continue
@@ -112,13 +163,7 @@ class RagService:
                 )
             )
         scored.sort(key=lambda item: item.score, reverse=True)
-
-        reranked = self._try_rerank(query=query, results=scored[: max(top_k * 2, 6)])
-        return reranked[:top_k], {
-            "db_candidates": len(scored),
-            "reranked": len(reranked),
-            "strategy": "db-lexical+reranker",
-        }
+        return scored
 
     def _try_rerank(self, *, query: str, results: list[RagChunkResult]) -> list[RagChunkResult]:
         if not results:
@@ -140,6 +185,7 @@ class RagService:
             reranked.sort(key=lambda item: item.score, reverse=True)
             return reranked
         except Exception:
+            logger.exception("Reranker unavailable, returning retriever ordering")
             return results
 
     async def generate_answer(
@@ -192,4 +238,3 @@ class RagService:
             data = response.json()
         answer = data["choices"][0]["message"]["content"]
         return answer, provider.name
-

@@ -31,13 +31,7 @@ def wait_for_dependencies(role: str, settings: Settings) -> None:
     if role == "platform-api":
         checks.append(("minio", lambda: wait_for_tcp(settings.minio_endpoint)))
     if role == "rag-engine":
-        checks.extend(
-            [
-                ("elasticsearch", lambda: wait_for_http(settings.elasticsearch_url)),
-                ("milvus", lambda: wait_for_http_or_tcp(settings.milvus_uri)),
-                ("reranker", lambda: wait_for_http(f"{settings.reranker_url}/healthz")),
-            ]
-        )
+        checks.append(("reranker", lambda: wait_for_http(f"{settings.reranker_url}/healthz")))
     if role == "celery-worker":
         checks.append(("rag-engine", lambda: wait_for_http(f"{settings.rag_engine_url}/healthz")))
     if role == "ops-agent":

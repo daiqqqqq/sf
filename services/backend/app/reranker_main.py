@@ -32,7 +32,7 @@ def get_model():
         return None
     if MODEL_CACHE:
         return MODEL_CACHE
-    model_name = "BAAI/bge-reranker-v2-m3"
+    model_name = settings.reranker_model_name
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
     model.eval()

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-PERSIST_ROOT="${PERSIST_ROOT:-/opt/rag-platform}"
+PERSIST_ROOT="${PERSIST_ROOT:-/data/rag-platform}"
 APP_ROOT="${APP_ROOT:-${REPO_ROOT}}"
 SERVICE_NAME="${SERVICE_NAME:-rag-platform}"
 ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"

@@ -200,6 +200,12 @@ services:
     volumes:
       - ${PERSIST_ROOT}/logs:/workspace/logs
       - ${APP_DATA_ROOT}:/workspace/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker_healthcheck"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
 
   celery-beat:
     build:

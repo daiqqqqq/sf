@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import BytesIO
+import logging
 import os
+from tempfile import NamedTemporaryFile
 
 import httpx
-from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
@@ -31,6 +32,55 @@ try:
 except Exception:  # pragma: no cover - optional dependency behavior
     PdfReader = None  # type: ignore[assignment]
 
+try:
+    from docling.datamodel.base_models import DocumentStream
+    from docling.document_converter import DocumentConverter
+except Exception:  # pragma: no cover - optional dependency behavior
+    DocumentStream = DocumentConverter = None  # type: ignore[assignment]
+
+
+logger = logging.getLogger(__name__)
+DOCLING_CACHE: dict[str, object] = {}
+
+
+def _get_docling_converter():
+    if DocumentConverter is None:
+        return None
+    converter = DOCLING_CACHE.get("converter")
+    if converter is None:
+        converter = DocumentConverter()
+        DOCLING_CACHE["converter"] = converter
+    return converter
+
+
+def _extract_with_docling(filename: str, payload: bytes) -> tuple[str, str] | None:
+    converter = _get_docling_converter()
+    if converter is None:
+        return None
+    try:
+        source_name = os.path.basename(filename)
+        if DocumentStream is not None:
+            result = converter.convert(DocumentStream(name=source_name, stream=BytesIO(payload)))
+        else:
+            suffix = os.path.splitext(source_name)[1]
+            with NamedTemporaryFile(suffix=suffix, delete=True) as handle:
+                handle.write(payload)
+                handle.flush()
+                result = converter.convert(handle.name)
+
+        document = result.document
+        if hasattr(document, "export_to_markdown"):
+            extracted = document.export_to_markdown().strip()
+        elif hasattr(document, "export_to_text"):
+            extracted = document.export_to_text().strip()
+        else:
+            extracted = str(document).strip()
+        if extracted:
+            return extracted, "docling"
+    except Exception:
+        logger.exception("Docling extraction failed for %s", filename)
+    return None
+
 
 def _extract_with_tika(filename: str, payload: bytes, settings: Settings) -> tuple[str, str]:
     try:
@@ -52,6 +102,10 @@ def _extract_with_tika(filename: str, payload: bytes, settings: Settings) -> tup
 def _extract_text(filename: str, payload: bytes, settings: Settings) -> tuple[str, str]:
     backend = detect_parser_backend(filename)
     suffix = filename.lower()
+    if suffix.endswith((".pdf", ".docx", ".doc", ".ppt", ".pptx")):
+        extracted = _extract_with_docling(filename, payload)
+        if extracted is not None:
+            return extracted
     if suffix.endswith(".pdf") and PdfReader is not None:
         reader = PdfReader(BytesIO(payload))
         extracted = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
@@ -136,15 +190,48 @@ def _run_ingest(job_id: int) -> None:
         db.close()
 
 
+def _mark_dispatch_failed(job_id: int, reason: str) -> None:
+    init_db()
+    db: Session = get_session_factory()()
+    try:
+        job = db.get(IngestJob, job_id)
+        if job is None:
+            return
+
+        message = f"celery dispatch failed: {reason}"
+        job.status = JobStatus.failed.value
+        job.stage = "dispatch_failed"
+        job.error_message = message
+        job.finished_at = datetime.now(UTC)
+
+        document = db.get(Document, job.document_id)
+        if document is not None:
+            document.status = DocumentStatus.failed.value
+            document.error_message = message
+
+        index_task = db.query(ChunkIndexTask).filter(ChunkIndexTask.job_id == job.id).first()
+        if index_task is not None:
+            index_task.status = JobStatus.failed.value
+            index_task.last_message = message
+
+        db.commit()
+    finally:
+        db.close()
+
+
 def dispatch_ingest_job(job_id: int) -> None:
     settings = get_settings()
     if settings.task_execution_mode == "eager":
         _run_ingest(job_id)
     else:
-        ingest_document_task.delay(job_id)
+        try:
+            ingest_document_task.delay(job_id)
+        except Exception as exc:
+            _mark_dispatch_failed(job_id, str(exc))
+            logger.exception("Failed to dispatch ingest job %s to celery", job_id)
 
 
-@shared_task(name="app.tasks.pipeline.ingest_document_task")
+@celery_app.task(name="app.tasks.pipeline.ingest_document_task")
 def ingest_document_task(job_id: int) -> None:
     _run_ingest(job_id)
 

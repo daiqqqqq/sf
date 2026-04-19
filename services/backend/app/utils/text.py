@@ -50,7 +50,7 @@ def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 120) -> li
 def detect_parser_backend(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix in {".pdf", ".docx", ".doc", ".ppt", ".pptx"}:
-        return "tika"
+        return "docling"
     if suffix in {".md", ".markdown"}:
         return "markdown"
     if suffix in {".png", ".jpg", ".jpeg"}:

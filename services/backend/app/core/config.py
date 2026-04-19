@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     docker_compose_file: str = "/workspace/deploy/two-server/app-node/docker-compose.yml"
 
     reranker_model_name: str = "BAAI/bge-reranker-v2-m3"
+    haystack_candidate_multiplier: int = 3
 
     @property
     def allowed_service_names(self) -> list[str]:

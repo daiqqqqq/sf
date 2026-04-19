@@ -22,8 +22,8 @@ def test_lexical_score_rewards_overlap() -> None:
 
 
 def test_detect_parser_backend() -> None:
-    assert detect_parser_backend("report.pdf") == "tika"
+    assert detect_parser_backend("report.pdf") == "docling"
+    assert detect_parser_backend("slides.pptx") == "docling"
     assert detect_parser_backend("notes.md") == "markdown"
     assert detect_parser_backend("scan.jpg") == "ocr"
     assert detect_parser_backend("plain.txt") == "native"
-
