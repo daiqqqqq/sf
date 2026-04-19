@@ -40,8 +40,15 @@ mkdir -p \
   "${PERSIST_ROOT}/data" \
   "${PERSIST_ROOT}/backups"
 
+# Align host volume ownership with container runtime users so services can
+# initialize state under bind mounts on first boot.
+chown -R 1001:1001 "${PERSIST_ROOT}/kafka"
+chown -R 1000:1000 "${PERSIST_ROOT}/elasticsearch"
+chmod -R u+rwX,g+rwX "${PERSIST_ROOT}/kafka" "${PERSIST_ROOT}/elasticsearch"
+
 cat >/etc/sysctl.d/99-rag-platform.conf <<EOF
 vm.max_map_count=262144
+vm.overcommit_memory=1
 fs.inotify.max_user_instances=512
 EOF
 sysctl --system >/dev/null
