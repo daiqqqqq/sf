@@ -19,3 +19,4 @@ Thumbs.db
 *.log
 data/
 logs/
+_init_.py

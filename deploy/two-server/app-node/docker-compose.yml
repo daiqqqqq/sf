@@ -49,6 +49,8 @@ x-backend-env: &backend-env
   DOCKER_COMPOSE_FILE: ${DOCKER_COMPOSE_FILE}
   APP_DATA_ROOT: ${APP_DATA_ROOT}
 
+x-backend-image: &backend-image rag-platform-backend:latest
+
 services:
   nginx:
     image: nginx:1.27-alpine
@@ -90,6 +92,7 @@ services:
       start_period: 20s
 
   platform-api:
+    image: *backend-image
     build:
       context: ../../../services/backend
       dockerfile: Dockerfile
@@ -124,10 +127,7 @@ services:
       start_period: 40s
 
   rag-engine:
-    build:
-      context: ../../../services/backend
-      dockerfile: Dockerfile
-      target: rag
+    image: *backend-image
     container_name: rag-engine
     restart: unless-stopped
     depends_on:
@@ -156,10 +156,7 @@ services:
       start_period: 40s
 
   reranker:
-    build:
-      context: ../../../services/backend
-      dockerfile: Dockerfile
-      target: reranker
+    image: *backend-image
     container_name: rag-reranker
     restart: unless-stopped
     environment:
@@ -176,10 +173,7 @@ services:
       start_period: 20s
 
   celery-worker:
-    build:
-      context: ../../../services/backend
-      dockerfile: Dockerfile
-      target: worker
+    image: *backend-image
     container_name: rag-celery-worker
     restart: unless-stopped
     depends_on:
@@ -208,10 +202,7 @@ services:
       start_period: 30s
 
   celery-beat:
-    build:
-      context: ../../../services/backend
-      dockerfile: Dockerfile
-      target: beat
+    image: *backend-image
     container_name: rag-celery-beat
     restart: unless-stopped
     depends_on:
@@ -229,10 +220,7 @@ services:
       - ${PERSIST_ROOT}/logs:/workspace/logs
 
   ops-agent:
-    build:
-      context: ../../../services/backend
-      dockerfile: Dockerfile
-      target: ops
+    image: *backend-image
     container_name: rag-ops-agent
     restart: unless-stopped
     environment:

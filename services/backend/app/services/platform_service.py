@@ -226,6 +226,27 @@ class PlatformService:
     def list_health_snapshots(self) -> list[ServiceHealthSnapshot]:
         return list(self.db.scalars(select(ServiceHealthSnapshot).order_by(desc(ServiceHealthSnapshot.checked_at)).limit(20)))
 
+    def list_latest_health_snapshots(self) -> list[ServiceHealthSnapshot]:
+        ranked_snapshots = (
+            select(
+                ServiceHealthSnapshot.id.label("id"),
+                func.row_number()
+                .over(
+                    partition_by=ServiceHealthSnapshot.service_name,
+                    order_by=ServiceHealthSnapshot.checked_at.desc(),
+                )
+                .label("row_number"),
+            )
+            .subquery()
+        )
+        stmt = (
+            select(ServiceHealthSnapshot)
+            .join(ranked_snapshots, ServiceHealthSnapshot.id == ranked_snapshots.c.id)
+            .where(ranked_snapshots.c.row_number == 1)
+            .order_by(desc(ServiceHealthSnapshot.checked_at), ServiceHealthSnapshot.service_name)
+        )
+        return list(self.db.scalars(stmt))
+
     def list_audits(self) -> list[ContainerActionAudit]:
         return list(self.db.scalars(select(ContainerActionAudit).order_by(desc(ContainerActionAudit.created_at)).limit(200)))
 
@@ -270,7 +291,7 @@ class PlatformService:
         }
         return {
             "metrics": metrics,
-            "service_health": self.list_health_snapshots(),
+            "service_health": self.list_latest_health_snapshots(),
             "latest_jobs": self.list_jobs()[:10],
             "latest_audits": self.list_audits()[:10],
         }
