@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Styling"
+  short_description: "Craft polished, intentional frontend styling."
+  default_prompt: "Use $frontend-styling to refine the visual direction, styling system, and UI polish of this frontend."
