@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "缺少 ${ENV_FILE}，先执行 cp .env.example .env 并填写配置。" >&2
+  echo "Missing ${ENV_FILE}. Run 'cp .env.example .env' first." >&2
   exit 1
 fi
 
@@ -18,7 +18,7 @@ read_env() {
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "缺少命令：$1" >&2
+    echo "Missing required command: $1" >&2
     exit 1
   fi
 }
@@ -37,7 +37,7 @@ require_command ss
 
 PYTHON_BIN="$(command -v python3 || command -v python || true)"
 if [[ -z "${PYTHON_BIN}" ]]; then
-  echo "缺少 python3/python，无法解析模型服务 URL。" >&2
+  echo "Missing python3/python. Unable to parse model service URLs." >&2
   exit 1
 fi
 
@@ -51,7 +51,7 @@ persist_probe="${persist_root%/*}"
 persist_probe="${persist_probe:-/}"
 
 if ! docker compose version >/dev/null 2>&1; then
-  echo "Docker Compose 插件不可用。" >&2
+  echo "Docker Compose plugin is unavailable." >&2
   exit 1
 fi
 
@@ -62,43 +62,41 @@ disk_gb="$(df -BG "${persist_probe}" | awk 'NR==2 {gsub(/G/, "", $4); print $4}'
 vm_map_count="$(sysctl -n vm.max_map_count)"
 
 echo "Memory: ${mem_gb}G"
-echo "Disk free on /opt: ${disk_gb}G"
+echo "Disk free near ${persist_root}: ${disk_gb}G"
 echo "vm.max_map_count: ${vm_map_count}"
 
 if [[ "${mem_gb}" -lt 16 ]]; then
-  echo "警告：内存低于 16G，完整栈可能不稳定。" >&2
+  echo "Warning: memory is below 16G. The full stack may be unstable." >&2
 fi
 
 if [[ "${disk_gb}" -lt 80 ]]; then
-  echo "警告：/opt 可用空间低于 80G，索引和镜像可能不足。" >&2
+  echo "Warning: available disk space is below 80G. Images and indices may run out of space." >&2
 fi
 
 if [[ "${vm_map_count}" -lt 262144 ]]; then
-  echo "警告：vm.max_map_count 低于 262144，Elasticsearch 可能无法启动。" >&2
+  echo "Warning: vm.max_map_count is below 262144. Elasticsearch may fail to start." >&2
 fi
 
-echo "检查 GPU 服务器模型连通性..."
+echo "Checking GPU model endpoints..."
 while IFS=: read -r host port; do
-  check_tcp "${host}" "${port}" || { echo "无法连接 ${host}:${port}" >&2; exit 1; }
+  check_tcp "${host}" "${port}" || { echo "Unable to connect to ${host}:${port}" >&2; exit 1; }
 done < <("${PYTHON_BIN}" - "${ollama_url}" "${vllm27_url}" "${vllm35_url}" <<'PY'
 import sys
 from urllib.parse import urlparse
 
 for raw in sys.argv[1:]:
     parsed = urlparse(raw)
-    host = parsed.hostname
-    port = parsed.port
-    if not host or not port:
+    if not parsed.hostname or not parsed.port:
         raise SystemExit(f"invalid url in env: {raw}")
-    print(f"{host}:{port}")
+    print(f"{parsed.hostname}:{parsed.port}")
 PY
 )
 
-echo "检查目标端口占用..."
-for port in "${app_port:-80}" 5432 6379 9092 9000 9200 19530 9998; do
+echo "Checking local port conflicts..."
+for port in "${app_port:-80}" 5432 6379 9092 9000 9200 19530 9998 9090 3000; do
   if ss -ltn "( sport = :${port} )" | grep -q ":${port}"; then
-    echo "警告：端口 ${port} 已被占用，请确认是否冲突。"
+    echo "Warning: port ${port} is already in use. Verify there is no conflict." >&2
   fi
 done
 
-echo "Preflight 检查完成。"
+echo "Preflight checks completed."

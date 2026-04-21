@@ -1,10 +1,14 @@
 export class ApiError extends Error {
   status: number;
+  code?: string;
+  details?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
@@ -46,8 +50,14 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, tokens
 
   const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
-    const text = await response.text();
-    throw new ApiError(text || response.statusText, response.status);
+    let payload: { detail?: string; code?: string; details?: unknown } | null = null;
+    try {
+      payload = (await response.json()) as { detail?: string; code?: string; details?: unknown };
+    } catch {
+      payload = null;
+    }
+    const fallbackText = payload?.detail ?? response.statusText ?? "请求失败";
+    throw new ApiError(fallbackText, response.status, payload?.code, payload?.details);
   }
 
   if (response.status === 204) {
@@ -55,4 +65,3 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, tokens
   }
   return (await response.json()) as T;
 }
-

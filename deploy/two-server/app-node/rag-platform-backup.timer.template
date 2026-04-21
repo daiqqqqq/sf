@@ -1,0 +1,9 @@
+[Unit]
+Description=Run __SERVICE_NAME__ backup on schedule
+
+[Timer]
+OnCalendar=__BACKUP_ON_CALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

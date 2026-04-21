@@ -7,8 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api import audit, auth, containers, documents, jobs, knowledge, models, rag, system
-from app.db.session import get_db_session, init_db, get_session_factory
 from app.core.config import get_settings
+from app.core.metrics import metrics_response
+from app.core.web import install_common_handlers
+from app.db.session import get_db_session, init_db, get_session_factory
 from app.services.platform_service import PlatformService
 
 
@@ -32,6 +34,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_env != "production" else None,
     openapi_url="/openapi.json" if settings.app_env != "production" else None,
 )
+install_common_handlers(app, service_name="platform-api")
 
 app.include_router(auth.router)
 app.include_router(system.router)
@@ -53,3 +56,8 @@ def healthz() -> dict[str, str]:
 def readyz(db: Session = Depends(get_db_session)) -> dict[str, str]:
     db.execute(text("SELECT 1"))
     return {"status": "ready"}
+
+
+@app.get("/metrics")
+def metrics():
+    return metrics_response()

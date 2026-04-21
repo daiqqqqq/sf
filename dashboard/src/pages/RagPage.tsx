@@ -19,13 +19,14 @@ type RagResponse = {
 };
 
 export function RagPage() {
-  const { session } = useAuth();
+  const { session, canRunRag } = useAuth();
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [kbId, setKbId] = useState<number>(1);
   const [providerId, setProviderId] = useState<number | "">("");
   const [query, setQuery] = useState("这套平台的模型和检索链路如何协作？");
   const [response, setResponse] = useState<RagResponse | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -42,31 +43,41 @@ export function RagPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const data = await apiRequest<RagResponse>(
-      "/api/rag/debug",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          kb_id: kbId,
-          query,
-          top_k: 6,
-          model_provider_id: providerId || null
-        })
-      },
-      session
-    );
-    setResponse(data);
+    if (!canRunRag) {
+      return;
+    }
+    try {
+      const data = await apiRequest<RagResponse>(
+        "/api/rag/debug",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            kb_id: kbId,
+            query,
+            top_k: 6,
+            model_provider_id: providerId || null
+          })
+        },
+        session
+      );
+      setResponse(data);
+      setError("");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "RAG 调试失败。");
+    }
   };
 
   return (
     <section className="page">
-      <PageHeader title="RAG 调试" subtitle="直接验证召回、重排和生成模型路由结果。" />
+      <PageHeader title="RAG 调试" subtitle="直接验证召回、融合、重排和生成模型路由结果。" />
+      {error ? <div className="error-banner">{error}</div> : null}
       <div className="two-column">
         <form className="panel form-grid" onSubmit={submit}>
           <h2>调试参数</h2>
+          {!canRunRag ? <p className="panel-meta">当前角色只有只读权限，不能执行 RAG 查询。</p> : null}
           <label>
             知识库
-            <select value={kbId} onChange={(event) => setKbId(Number(event.target.value))}>
+            <select value={kbId} onChange={(event) => setKbId(Number(event.target.value))} disabled={!canRunRag}>
               {knowledgeBases.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -76,7 +87,7 @@ export function RagPage() {
           </label>
           <label>
             生成模型
-            <select value={providerId} onChange={(event) => setProviderId(event.target.value ? Number(event.target.value) : "")}>
+            <select value={providerId} onChange={(event) => setProviderId(event.target.value ? Number(event.target.value) : "")} disabled={!canRunRag}>
               <option value="">自动选择</option>
               {providers.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -87,9 +98,9 @@ export function RagPage() {
           </label>
           <label>
             查询语句
-            <textarea value={query} onChange={(event) => setQuery(event.target.value)} />
+            <textarea value={query} onChange={(event) => setQuery(event.target.value)} disabled={!canRunRag} />
           </label>
-          <button className="primary-button" type="submit">
+          <button className="primary-button" type="submit" disabled={!canRunRag}>
             开始调试
           </button>
         </form>
@@ -127,4 +138,3 @@ export function RagPage() {
     </section>
   );
 }
-

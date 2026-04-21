@@ -14,13 +14,19 @@ type ContainerState = {
 const actions = ["start", "stop", "restart", "recreate"];
 
 export function ContainersPage() {
-  const { session } = useAuth();
+  const { session, canOperateContainers } = useAuth();
   const [items, setItems] = useState<ContainerState[]>([]);
   const [selectedLogs, setSelectedLogs] = useState<string>("");
+  const [error, setError] = useState("");
 
   const load = async () => {
-    const data = await apiRequest<ContainerState[]>("/api/containers", { method: "GET" }, session);
-    setItems(data);
+    try {
+      const data = await apiRequest<ContainerState[]>("/api/containers", { method: "GET" }, session);
+      setItems(data);
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "加载容器状态失败。");
+    }
   };
 
   useEffect(() => {
@@ -28,26 +34,39 @@ export function ContainersPage() {
   }, [session]);
 
   const runAction = async (name: string, action: string) => {
-    await apiRequest(`/api/containers/${name}/actions/${action}`, { method: "POST" }, session);
-    await load();
+    if (!canOperateContainers) {
+      return;
+    }
+    try {
+      await apiRequest(`/api/containers/${name}/actions/${action}`, { method: "POST" }, session);
+      await load();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "执行容器动作失败。");
+    }
   };
 
   const loadLogs = async (name: string) => {
-    const data = await apiRequest<{ logs: string }>(`/api/containers/${name}/logs?tail=200`, { method: "GET" }, session);
-    setSelectedLogs(data.logs);
+    try {
+      const data = await apiRequest<{ logs: string }>(`/api/containers/${name}/logs?tail=200`, { method: "GET" }, session);
+      setSelectedLogs(data.logs);
+      setError("");
+    } catch (logError) {
+      setError(logError instanceof Error ? logError.message : "读取容器日志失败。");
+    }
   };
 
   return (
     <section className="page">
       <PageHeader
         title="容器与服务"
-        subtitle="只对白名单服务开放启停、重启和重建；GPU 服务器模型保持只读。"
+        subtitle="只对白名单服务开放日志查看和容器动作。GPU 模型服务器保持只读监测。"
         actions={
           <button className="secondary-button" onClick={() => void load()} type="button">
             刷新
           </button>
         }
       />
+      {error ? <div className="error-banner">{error}</div> : null}
 
       <div className="table-panel">
         <table>
@@ -80,6 +99,7 @@ export function ContainersPage() {
                         className="ghost-button"
                         onClick={() => void runAction(item.name, action)}
                         type="button"
+                        disabled={!canOperateContainers}
                       >
                         {action}
                       </button>
@@ -99,4 +119,3 @@ export function ContainersPage() {
     </section>
   );
 }
-

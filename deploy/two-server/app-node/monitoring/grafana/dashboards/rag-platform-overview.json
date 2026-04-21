@@ -1,0 +1,113 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"expr": "sum(rate(rag_platform_http_requests_total{service=\"platform-api\"}[5m]))", "refId": "A"}],
+      "title": "Platform API QPS",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(rag_platform_http_request_duration_seconds_bucket{service=\"platform-api\"}[5m])) by (le))", "refId": "A"}],
+      "title": "Platform API P95",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"expr": "increase(rag_platform_model_requests_total{status=\"failed\"}[1h])", "refId": "A"}],
+      "title": "Model Failures (1h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
+      "id": 4,
+      "targets": [
+        {"expr": "rate(rag_platform_http_requests_total{service=\"platform-api\"}[5m])", "legendFormat": "{{method}} {{path}}", "refId": "A"},
+        {"expr": "rate(rag_platform_http_requests_total{service=\"rag-engine\"}[5m])", "legendFormat": "rag-engine {{method}} {{path}}", "refId": "B"}
+      ],
+      "title": "HTTP Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8},
+      "id": 5,
+      "targets": [
+        {"expr": "increase(rag_platform_ingest_jobs_total{status=\"succeeded\"}[1h])", "legendFormat": "Succeeded", "refId": "A"},
+        {"expr": "increase(rag_platform_ingest_jobs_total{status=\"failed\"}[1h])", "legendFormat": "Failed", "refId": "B"}
+      ],
+      "title": "Ingest Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17},
+      "id": 6,
+      "targets": [
+        {"expr": "increase(rag_platform_rag_queries_total[1h])", "legendFormat": "{{status}}", "refId": "A"},
+        {"expr": "increase(rag_platform_rag_degraded_total[1h])", "legendFormat": "degraded {{backend}}", "refId": "B"}
+      ],
+      "title": "RAG Queries and Degradations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 17},
+      "id": 7,
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(rag_platform_model_request_duration_seconds_bucket[5m])) by (le, provider))", "legendFormat": "{{provider}}", "refId": "A"}],
+      "title": "Model P95 Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 26},
+      "id": 8,
+      "targets": [{"expr": "avg(rate(container_cpu_usage_seconds_total{name=~\"rag-.*\"}[5m]))", "legendFormat": "containers", "refId": "A"}],
+      "title": "Container CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 26},
+      "id": 9,
+      "targets": [{"expr": "container_memory_working_set_bytes{name=~\"rag-.*\"}", "legendFormat": "{{name}}", "refId": "A"}],
+      "title": "Container Memory",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["rag", "ops"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "",
+  "title": "RAG Platform Overview",
+  "uid": "rag-platform-overview",
+  "version": 1
+}

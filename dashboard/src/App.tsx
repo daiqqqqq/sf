@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./layouts/AppLayout";
 import { useAuth } from "./hooks/useAuth";
@@ -25,19 +26,23 @@ function ProtectedRoutes() {
   return <AppLayout />;
 }
 
+function GuardedRoute({ allowed, element }: { allowed: boolean; element: ReactElement }) {
+  return allowed ? element : <Navigate to="/" replace />;
+}
+
 export default function App() {
-  const { user } = useAuth();
+  const { user, canOperateContainers, canRunRag } = useAuth();
 
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route element={<ProtectedRoutes />}>
         <Route path="/" element={<OverviewPage />} />
-        <Route path="/containers" element={<ContainersPage />} />
+        <Route path="/containers" element={<GuardedRoute allowed={canOperateContainers} element={<ContainersPage />} />} />
         <Route path="/knowledge" element={<KnowledgeBasesPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/models" element={<ModelsPage />} />
-        <Route path="/rag" element={<RagPage />} />
+        <Route path="/rag" element={<GuardedRoute allowed={canRunRag} element={<RagPage />} />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/audit" element={<AuditPage />} />
       </Route>
@@ -45,4 +50,3 @@ export default function App() {
     </Routes>
   );
 }
-

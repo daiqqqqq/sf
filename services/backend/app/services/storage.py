@@ -8,6 +8,7 @@ from minio import Minio
 from minio.error import S3Error
 
 from app.core.config import get_settings
+from app.core.errors import ExternalServiceAppError
 
 
 class StorageService:
@@ -24,13 +25,23 @@ class StorageService:
             secure=self.settings.minio_secure,
         )
 
+    def _allow_local_fallback(self) -> bool:
+        return self.settings.app_env != "production" and self.settings.storage_local_fallback_enabled
+
     def ensure_bucket(self) -> None:
         try:
             client = self._client()
             if not client.bucket_exists(self.settings.minio_bucket):
                 client.make_bucket(self.settings.minio_bucket)
-        except Exception:
-            self.local_root.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            if self._allow_local_fallback():
+                self.local_root.mkdir(parents=True, exist_ok=True)
+                return
+            raise ExternalServiceAppError(
+                "对象存储不可用，无法确认存储桶状态。",
+                service="minio",
+                details={"bucket": self.settings.minio_bucket, "error": str(exc)},
+            ) from exc
 
     def save_bytes(self, object_key: str, content_type: str, payload: bytes) -> str:
         self.ensure_bucket()
@@ -44,11 +55,17 @@ class StorageService:
                 content_type=content_type,
             )
             return object_key
-        except Exception:
-            target = self.local_root / object_key
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
-            return object_key
+        except Exception as exc:
+            if self._allow_local_fallback():
+                target = self.local_root / object_key
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(payload)
+                return object_key
+            raise ExternalServiceAppError(
+                "对象存储不可用，无法写入文件。",
+                service="minio",
+                details={"object_key": object_key, "error": str(exc)},
+            ) from exc
 
     def save_file(self, object_key: str, content_type: str, source_path: Path) -> str:
         self.ensure_bucket()
@@ -61,11 +78,17 @@ class StorageService:
                 content_type=content_type,
             )
             return object_key
-        except Exception:
-            target = self.local_root / object_key
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, target)
-            return object_key
+        except Exception as exc:
+            if self._allow_local_fallback():
+                target = self.local_root / object_key
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, target)
+                return object_key
+            raise ExternalServiceAppError(
+                "对象存储不可用，无法保存上传文件。",
+                service="minio",
+                details={"object_key": object_key, "error": str(exc)},
+            ) from exc
 
     def read_bytes(self, object_key: str) -> bytes:
         try:
@@ -75,5 +98,11 @@ class StorageService:
             response.close()
             response.release_conn()
             return data
-        except (Exception, S3Error):
-            return (self.local_root / object_key).read_bytes()
+        except (Exception, S3Error) as exc:
+            if self._allow_local_fallback():
+                return (self.local_root / object_key).read_bytes()
+            raise ExternalServiceAppError(
+                "对象存储不可用，无法读取文件内容。",
+                service="minio",
+                details={"object_key": object_key, "error": str(exc)},
+            ) from exc

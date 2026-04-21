@@ -34,6 +34,12 @@ class ProviderKind(str, Enum):
     generation = "generation"
 
 
+class UserRole(str, Enum):
+    superadmin = "superadmin"
+    operator = "operator"
+    viewer = "viewer"
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -42,6 +48,7 @@ class AdminUser(Base):
     password_hash: Mapped[str] = mapped_column(String(256))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str] = mapped_column(String(32), default=UserRole.superadmin.value, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -89,6 +96,7 @@ class DocumentChunk(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
     kb_id: Mapped[int] = mapped_column(ForeignKey("knowledge_bases.id"), index=True)
+    chunk_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     chunk_index: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
     score_hint: Mapped[int] = mapped_column(Integer, default=0)
@@ -125,6 +133,7 @@ class ChunkIndexTask(Base):
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.pending.value)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     last_message: Mapped[str] = mapped_column(Text, default="")
+    details_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

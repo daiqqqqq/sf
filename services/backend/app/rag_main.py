@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_internal_token
 from app.core.config import get_settings
+from app.core.metrics import metrics_response
+from app.core.web import install_common_handlers
 from app.db.session import get_db_session, init_db
-from app.schemas.api import InternalIngestRequest, RagQueryRequest, RagQueryResponse
+from app.schemas.api import InternalIngestRequest, InternalIngestResponse, RagQueryRequest, RagQueryResponse
 from app.services.rag_service import RagService
 
 settings = get_settings()
@@ -18,6 +20,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_env != "production" else None,
     openapi_url="/openapi.json" if settings.app_env != "production" else None,
 )
+install_common_handlers(app, service_name="rag-engine")
 
 
 @app.on_event("startup")
@@ -33,17 +36,17 @@ def healthz() -> dict[str, str]:
 @app.get("/readyz")
 def readyz(db: Session = Depends(get_db_session)) -> dict[str, str]:
     db.execute(text("SELECT 1"))
-    return {"status": "ready"}
+    return RagService(db).readiness()
 
 
-@app.post("/ingest")
+@app.post("/ingest", response_model=InternalIngestResponse)
 def ingest(
     payload: InternalIngestRequest,
     db: Session = Depends(get_db_session),
     _: None = Depends(require_internal_token),
-) -> dict[str, int]:
-    total = RagService(db).ingest_document(document_id=payload.document_id, kb_id=payload.kb_id, text=payload.text)
-    return {"chunks": total}
+) -> InternalIngestResponse:
+    total, indexed_backends = RagService(db).ingest_document(document_id=payload.document_id, kb_id=payload.kb_id, text=payload.text)
+    return InternalIngestResponse(chunks=total, indexed_backends=indexed_backends)
 
 
 @app.post("/query", response_model=RagQueryResponse)
@@ -60,3 +63,8 @@ async def query(
         model_provider_id=payload.model_provider_id,
     )
     return RagQueryResponse(answer=answer, results=results, used_model=used_model, debug=debug)
+
+
+@app.get("/metrics")
+def metrics():
+    return metrics_response()

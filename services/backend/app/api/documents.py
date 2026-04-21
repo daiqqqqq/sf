@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_roles
 from app.db.session import get_db_session
-from app.models.entities import AdminUser
+from app.models.entities import AdminUser, UserRole
 from app.schemas.api import DocumentRead, IngestJobRead, MessageResponse
 from app.services.platform_service import PlatformService
 from app.tasks.pipeline import dispatch_ingest_job
@@ -18,7 +18,7 @@ async def upload_document(
     kb_id: int = Query(..., ge=1),
     file: UploadFile = File(...),
     db: Session = Depends(get_db_session),
-    _: AdminUser = Depends(get_current_user),
+    _: AdminUser = Depends(require_roles(UserRole.superadmin.value, UserRole.operator.value)),
 ) -> dict[str, object]:
     service = PlatformService(db)
     document, job = await service.create_document(kb_id, file)
@@ -33,7 +33,13 @@ async def upload_document(
 def list_documents(
     kb_id: int | None = Query(default=None),
     db: Session = Depends(get_db_session),
-    _: AdminUser = Depends(get_current_user),
+    _: AdminUser = Depends(
+        require_roles(
+            UserRole.superadmin.value,
+            UserRole.operator.value,
+            UserRole.viewer.value,
+        )
+    ),
 ) -> list[DocumentRead]:
     items = PlatformService(db).list_documents(kb_id)
     return [DocumentRead.model_validate(item, from_attributes=True) for item in items]
@@ -43,7 +49,7 @@ def list_documents(
 def retry_document(
     document_id: int,
     db: Session = Depends(get_db_session),
-    _: AdminUser = Depends(get_current_user),
+    _: AdminUser = Depends(require_roles(UserRole.superadmin.value, UserRole.operator.value)),
 ) -> IngestJobRead:
     job = PlatformService(db).retry_document(document_id)
     dispatch_ingest_job(job.id)

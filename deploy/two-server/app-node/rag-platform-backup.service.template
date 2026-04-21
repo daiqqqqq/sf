@@ -1,0 +1,13 @@
+[Unit]
+Description=__SERVICE_NAME__ backup job
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__APP_ROOT__/deploy/two-server/app-node
+Environment=ENV_FILE=__ENV_FILE__
+ExecStart=__APP_ROOT__/deploy/two-server/app-node/backup_stack.sh
+
+[Install]
+WantedBy=multi-user.target

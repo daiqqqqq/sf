@@ -1,11 +1,14 @@
-import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, SessionTokens, apiRequest, loadSession, saveSession } from "../api/client";
 
-type CurrentUser = {
+export type UserRole = "superadmin" | "operator" | "viewer";
+
+export type CurrentUser = {
   id: number;
   username: string;
   is_active: boolean;
   is_superuser: boolean;
+  role: UserRole;
   last_login_at?: string | null;
 };
 
@@ -17,6 +20,11 @@ type AuthContextValue = {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refreshMe: () => Promise<void>;
+  canManageUsers: boolean;
+  canOperateContainers: boolean;
+  canWriteKnowledge: boolean;
+  canUploadDocuments: boolean;
+  canRunRag: boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -41,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveSession(null);
       setSession(null);
       setUser(null);
-      setError(err instanceof ApiError ? err.message : "加载用户信息失败");
+      setError(err instanceof ApiError ? err.message : "加载用户信息失败。");
     } finally {
       setLoading(false);
     }
@@ -75,8 +83,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const capabilities = useMemo(() => {
+    const role = user?.role;
+    return {
+      canManageUsers: role === "superadmin",
+      canOperateContainers: role === "superadmin" || role === "operator",
+      canWriteKnowledge: role === "superadmin" || role === "operator",
+      canUploadDocuments: role === "superadmin" || role === "operator",
+      canRunRag: role === "superadmin" || role === "operator"
+    };
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, error, login, logout, refreshMe }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        error,
+        login,
+        logout,
+        refreshMe,
+        ...capabilities
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

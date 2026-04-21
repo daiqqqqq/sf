@@ -1,19 +1,25 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
-const navItems = [
-  { to: "/", label: "总览" },
-  { to: "/containers", label: "容器与服务" },
-  { to: "/knowledge", label: "知识库" },
-  { to: "/documents", label: "文档与任务" },
-  { to: "/models", label: "模型连接" },
-  { to: "/rag", label: "RAG 调试" },
-  { to: "/settings", label: "系统设置" },
-  { to: "/audit", label: "审计日志" }
-];
-
 export function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, canOperateContainers, canRunRag } = useAuth();
+
+  const navItems = [
+    { to: "/", label: "总览", visible: true },
+    { to: "/containers", label: "容器与服务", visible: canOperateContainers },
+    { to: "/knowledge", label: "知识库", visible: true },
+    { to: "/documents", label: "文档与任务", visible: true },
+    { to: "/models", label: "模型连接", visible: true },
+    { to: "/rag", label: "RAG 调试", visible: canRunRag },
+    { to: "/settings", label: "系统设置", visible: true },
+    { to: "/audit", label: "审计日志", visible: true }
+  ];
+
+  const roleLabel = {
+    superadmin: "超级管理员",
+    operator: "运维操作员",
+    viewer: "只读审计员"
+  }[user?.role ?? "viewer"];
 
   return (
     <div className="shell">
@@ -23,15 +29,17 @@ export function AppLayout() {
           <strong>RAG Platform</strong>
         </div>
         <nav className="nav">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === "/"}>
-              {item.label}
-            </NavLink>
-          ))}
+          {navItems
+            .filter((item) => item.visible)
+            .map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.to === "/"}>
+                {item.label}
+              </NavLink>
+            ))}
         </nav>
         <div className="sidebar-footer">
           <div className="user-card">
-            <span>管理员</span>
+            <span>{roleLabel}</span>
             <strong>{user?.username ?? "未登录"}</strong>
           </div>
           <button className="ghost-button" onClick={logout} type="button">
@@ -45,4 +53,3 @@ export function AppLayout() {
     </div>
   );
 }
-

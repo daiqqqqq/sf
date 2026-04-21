@@ -6,6 +6,8 @@ from fastapi import Depends, FastAPI
 
 from app.api.dependencies import require_internal_token
 from app.core.config import get_settings
+from app.core.metrics import metrics_response
+from app.core.web import install_common_handlers
 from app.schemas.api import RerankRequest, RerankResponse
 from app.utils.text import lexical_score
 
@@ -17,6 +19,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_env != "production" else None,
     openapi_url="/openapi.json" if settings.app_env != "production" else None,
 )
+install_common_handlers(app, service_name="reranker")
 
 try:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -63,3 +66,8 @@ def rerank(payload: RerankRequest, _: None = Depends(require_internal_token)) ->
     with torch_lib.no_grad():
         logits = model(**batch).logits.view(-1).float().tolist()
     return RerankResponse(scores=logits)
+
+
+@app.get("/metrics")
+def metrics():
+    return metrics_response()

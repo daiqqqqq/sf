@@ -28,14 +28,20 @@ export function ModelsPage() {
   const { session } = useAuth();
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [health, setHealth] = useState<HealthSnapshot[]>([]);
+  const [error, setError] = useState("");
 
   const load = async () => {
-    const [providerData, healthData] = await Promise.all([
-      apiRequest<ModelProvider[]>("/api/models/providers", { method: "GET" }, session),
-      apiRequest<HealthSnapshot[]>("/api/models/health", { method: "GET" }, session)
-    ]);
-    setProviders(providerData);
-    setHealth(healthData);
+    try {
+      const [providerData, healthData] = await Promise.all([
+        apiRequest<ModelProvider[]>("/api/models/providers", { method: "GET" }, session),
+        apiRequest<HealthSnapshot[]>("/api/models/health", { method: "GET" }, session)
+      ]);
+      setProviders(providerData);
+      setHealth(healthData);
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "加载模型健康状态失败。");
+    }
   };
 
   useEffect(() => {
@@ -46,13 +52,14 @@ export function ModelsPage() {
     <section className="page">
       <PageHeader
         title="模型连接"
-        subtitle="应用机只读监测 GPU 服务器上的 Embedding 和生成模型接口。"
+        subtitle="应用服务器只读监测 GPU 服务器上的 embedding 和生成模型接口。"
         actions={
           <button className="secondary-button" onClick={() => void load()} type="button">
             立即探测
           </button>
         }
       />
+      {error ? <div className="error-banner">{error}</div> : null}
 
       <div className="two-column">
         <div className="panel">
@@ -96,4 +103,3 @@ export function ModelsPage() {
     </section>
   );
 }
-

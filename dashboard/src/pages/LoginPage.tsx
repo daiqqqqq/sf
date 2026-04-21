@@ -18,7 +18,7 @@ export function LoginPage() {
       await login(username, password);
       navigate("/");
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "登录失败");
+      setLocalError(err instanceof Error ? err.message : "登录失败。");
     } finally {
       setSubmitting(false);
     }
@@ -30,7 +30,7 @@ export function LoginPage() {
         <div className="login-copy">
           <span className="brand-kicker">Private Intranet Control Plane</span>
           <h1>统一管理双机 RAG 平台</h1>
-          <p>同一入口管理应用服务器容器、知识库索引任务、RAG 调试和 GPU 模型健康状态。</p>
+          <p>同一入口管理应用服务器容器、知识库索引任务、RAG 调试，以及 GPU 模型服务健康状态。</p>
         </div>
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
@@ -55,4 +55,3 @@ export function LoginPage() {
     </div>
   );
 }
-

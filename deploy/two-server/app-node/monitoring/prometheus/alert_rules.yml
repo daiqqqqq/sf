@@ -1,0 +1,56 @@
+groups:
+  - name: rag-platform-alerts
+    rules:
+      - alert: CeleryWorkerMissing
+        expr: absent(container_last_seen{name="rag-celery-worker"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "celery worker missing"
+          description: "The rag-celery-worker container has not been observed by cAdvisor for 2 minutes."
+
+      - alert: RagEngineMissing
+        expr: absent(up{job="rag-engine"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "rag-engine metrics missing"
+          description: "RAG engine metrics endpoint has been unreachable for 2 minutes."
+
+      - alert: OpsAgentMissing
+        expr: absent(up{job="ops-agent"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ops-agent metrics missing"
+          description: "Ops agent metrics endpoint has been unreachable for 2 minutes."
+
+      - alert: BackupStale
+        expr: time() - rag_platform_backup_last_success_timestamp > 93600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "backup is stale"
+          description: "No successful backup has been recorded within the last 26 hours."
+
+      - alert: RagQueryDegraded
+        expr: increase(rag_platform_rag_degraded_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG retrieval degraded"
+          description: "Hybrid retrieval has entered degraded mode more than 3 times in 15 minutes."
+
+      - alert: ModelBackendFailures
+        expr: increase(rag_platform_model_requests_total{status="failed"}[15m]) > 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "generation model failures detected"
+          description: "Model backend requests have failed more than twice in the last 15 minutes."

@@ -26,7 +26,24 @@ class UserRead(BaseModel):
     username: str
     is_active: bool
     is_superuser: bool
+    role: str
     last_login_at: datetime | None = None
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str = Field(min_length=8)
+    role: str = "viewer"
+    is_active: bool = True
+
+
+class UserUpdateRequest(BaseModel):
+    role: str | None = None
+    is_active: bool | None = None
+
+
+class UserPasswordResetRequest(BaseModel):
+    password: str = Field(min_length=8)
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -142,6 +159,7 @@ class OverviewResponse(BaseModel):
     service_health: list[HealthSnapshotRead]
     latest_jobs: list[IngestJobRead]
     latest_audits: list[ContainerAuditRead]
+    backup_status: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuditListResponse(BaseModel):
@@ -156,6 +174,11 @@ class InternalIngestRequest(BaseModel):
     document_id: int
     kb_id: int
     text: str
+
+
+class InternalIngestResponse(BaseModel):
+    chunks: int
+    indexed_backends: dict[str, int] = Field(default_factory=dict)
 
 
 class RerankRequest(BaseModel):

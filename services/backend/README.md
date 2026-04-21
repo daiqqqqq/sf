@@ -1,20 +1,37 @@
 # Backend Services
 
-这个目录承载四类服务：
+后端目录承载以下服务：
 
-- `platform-api`: 对外统一 API
-- `rag-engine`: 索引、召回、融合与问答入口
-- `ops-agent`: 受控 Docker 运维代理
-- `reranker`: 重排服务，默认支持启发式回退
-
-Celery worker 与 beat 也复用同一套代码和依赖。
+- `platform-api`：对外统一 API，负责登录、知识库、文档、任务、模型健康、审计和容器操作代理
+- `rag-engine`：负责切块、embedding、Milvus/Elasticsearch 索引、混合召回、RRF 融合和生成模型调用
+- `ops-agent`：受控 Docker 运维代理，只允许对白名单服务执行动作
+- `reranker`：重排服务，优先使用 `BAAI/bge-reranker-v2-m3`
+- `celery-worker` / `celery-beat`：异步解析与健康探测任务
 
 ## 生产启动方式
 
-容器内不再直接调用 `uvicorn`/`celery` 命令，而是统一通过 `python -m app.run_service` 启动：
+容器统一通过 `python -m app.run_service` 启动：
 
-- 启动前等待关键依赖可用
-- `platform-api` 和 `rag-engine` 使用 `gunicorn + uvicorn workers`
-- `platform-api` 启动时自动初始化数据库和默认管理员/模型配置
-- `celery-worker`、`celery-beat` 会等待 Redis、Kafka、RAG 引擎可用后再启动
+- 启动前等待数据库、Redis、Kafka、MinIO、Elasticsearch、Milvus、RAG 引擎等依赖就绪
+- `platform-api`、`rag-engine`、`ops-agent` 使用 `gunicorn + uvicorn workers`
+- `db-migrate` 一次性执行 `alembic upgrade head`
+- `celery-worker` 使用健康检查脚本 `python -m app.worker_healthcheck`
 
+## 关键能力
+
+- `Alembic` 迁移管理
+- JWT 登录鉴权和三角色 RBAC
+- 生产环境默认关闭对象存储本地静默降级
+- `/metrics` 指标暴露，供 Prometheus 采集
+- `Ollama /api/embed` 向量化
+- `Milvus + Elasticsearch + RRF + reranker` 混合召回
+
+## 本地开发
+
+轻量开发可继续使用 SQLite，但完整功能建议在 Compose 环境验证：
+
+```bash
+python -m compileall app tests
+```
+
+如果需要验证混合检索和监控栈，请在 Linux Docker 环境中按应用服务器 Compose 启动。

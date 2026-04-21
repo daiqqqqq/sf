@@ -4,29 +4,35 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-PERSIST_ROOT="${PERSIST_ROOT:-/data/rag-platform}"
+PERSIST_ROOT="${PERSIST_ROOT:-/opt/rag-platform}"
 APP_ROOT="${APP_ROOT:-${REPO_ROOT}}"
 SERVICE_NAME="${SERVICE_NAME:-rag-platform}"
 ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"
 SYSTEMD_UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+BACKUP_SERVICE_NAME="${SERVICE_NAME}-backup"
+BACKUP_SERVICE_UNIT_PATH="/etc/systemd/system/${BACKUP_SERVICE_NAME}.service"
+BACKUP_TIMER_UNIT_PATH="/etc/systemd/system/${BACKUP_SERVICE_NAME}.timer"
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "请使用 root 执行本脚本。" >&2
+  echo "Please run this script as root." >&2
   exit 1
 fi
 
-if ! command -v curl >/dev/null 2>&1; then
+install_dependency() {
+  local package="$1"
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get update && apt-get install -y curl
+    apt-get update && apt-get install -y "${package}"
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl
+    dnf install -y "${package}"
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl
+    yum install -y "${package}"
   else
-    echo "缺少 curl，且无法自动安装，请先手动安装 curl。" >&2
+    echo "Unable to install ${package} automatically. Please install it manually." >&2
     exit 1
   fi
-fi
+}
+
+command -v curl >/dev/null 2>&1 || install_dependency curl
 
 mkdir -p \
   "${PERSIST_ROOT}/minio" \
@@ -36,12 +42,13 @@ mkdir -p \
   "${PERSIST_ROOT}/milvus/data" \
   "${PERSIST_ROOT}/milvus/etcd" \
   "${PERSIST_ROOT}/elasticsearch" \
+  "${PERSIST_ROOT}/prometheus" \
+  "${PERSIST_ROOT}/grafana" \
   "${PERSIST_ROOT}/logs" \
   "${PERSIST_ROOT}/data" \
-  "${PERSIST_ROOT}/backups"
+  "${PERSIST_ROOT}/backups" \
+  "${PERSIST_ROOT}/backups/elasticsearch-repository"
 
-# Align host volume ownership with container runtime users so services can
-# initialize state under bind mounts on first boot.
 chown -R 1001:1001 "${PERSIST_ROOT}/kafka"
 chown -R 1000:1000 "${PERSIST_ROOT}/elasticsearch"
 chmod -R u+rwX,g+rwX "${PERSIST_ROOT}/kafka" "${PERSIST_ROOT}/elasticsearch"
@@ -68,27 +75,45 @@ systemctl enable docker >/dev/null 2>&1 || true
 systemctl start docker
 
 if ! docker compose version >/dev/null 2>&1; then
-  echo "Docker Compose plugin 未安装，请确认 Docker Engine 安装完整。" >&2
+  echo "Docker Compose plugin is missing. Please verify the Docker installation." >&2
   exit 1
 fi
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   cp "${SCRIPT_DIR}/.env.example" "${ENV_FILE}"
-  echo "已生成 ${ENV_FILE}，请先编辑其中的密码、Token 和内网地址。"
+  echo "Created ${ENV_FILE}. Update passwords, tokens, and network settings before deployment."
 fi
+
+backup_oncalendar_from_env() {
+  local raw minute hour
+  raw="$(grep -E '^BACKUP_WINDOW_CRON=' "${ENV_FILE}" | head -n1 | cut -d= -f2- || true)"
+  minute="$(awk '{print $1}' <<<"${raw:-0 2 * * *}")"
+  hour="$(awk '{print $2}' <<<"${raw:-0 2 * * *}")"
+  if [[ "${minute}" =~ ^[0-9]+$ && "${hour}" =~ ^[0-9]+$ ]]; then
+    printf '*-*-* %02d:%02d:00' "${hour}" "${minute}"
+    return
+  fi
+  printf '*-*-* 02:00:00'
+}
 
 sed "s|__APP_ROOT__|${APP_ROOT}|g; s|__ENV_FILE__|${ENV_FILE}|g; s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
   "${SCRIPT_DIR}/rag-platform.service.template" >"${SYSTEMD_UNIT_PATH}"
+sed "s|__APP_ROOT__|${APP_ROOT}|g; s|__ENV_FILE__|${ENV_FILE}|g; s|__SERVICE_NAME__|${SERVICE_NAME}|g" \
+  "${SCRIPT_DIR}/rag-platform-backup.service.template" >"${BACKUP_SERVICE_UNIT_PATH}"
+sed "s|__SERVICE_NAME__|${SERVICE_NAME}|g; s|__BACKUP_ON_CALENDAR__|$(backup_oncalendar_from_env)|g" \
+  "${SCRIPT_DIR}/rag-platform-backup.timer.template" >"${BACKUP_TIMER_UNIT_PATH}"
 
-chmod 644 "${SYSTEMD_UNIT_PATH}"
-chmod +x "${SCRIPT_DIR}/deploy.sh" "${SCRIPT_DIR}/preflight.sh"
+chmod 644 "${SYSTEMD_UNIT_PATH}" "${BACKUP_SERVICE_UNIT_PATH}" "${BACKUP_TIMER_UNIT_PATH}"
+chmod +x "${SCRIPT_DIR}/deploy.sh" "${SCRIPT_DIR}/preflight.sh" "${SCRIPT_DIR}/backup_stack.sh" "${SCRIPT_DIR}/restore_stack.sh"
 
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}" >/dev/null 2>&1 || true
+systemctl enable "${BACKUP_SERVICE_NAME}.timer" >/dev/null 2>&1 || true
 
-echo "主机初始化完成。"
-echo "下一步："
-echo "1. 编辑 ${ENV_FILE}"
-echo "2. 运行 ${SCRIPT_DIR}/preflight.sh"
-echo "3. 运行 ${SCRIPT_DIR}/deploy.sh"
-echo "4. 如需开机自启，执行 systemctl start ${SERVICE_NAME}"
+echo "Host bootstrap completed."
+echo "Next steps:"
+echo "1. Edit ${ENV_FILE}"
+echo "2. Run ${SCRIPT_DIR}/preflight.sh"
+echo "3. Run ${SCRIPT_DIR}/deploy.sh"
+echo "4. Optional: systemctl start ${SERVICE_NAME}"
+echo "5. Optional: systemctl start ${BACKUP_SERVICE_NAME}.timer"

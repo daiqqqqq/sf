@@ -5,12 +5,15 @@ from io import BytesIO
 import logging
 import os
 from tempfile import NamedTemporaryFile
+from time import perf_counter
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.core.config import Settings, get_settings
+from app.core.logging_utils import log_event
+from app.core.metrics import INGEST_JOBS_TOTAL
 from app.db.session import get_session_factory, init_db
 from app.models.entities import ChunkIndexTask, Document, DocumentStatus, IngestJob, JobStatus
 from app.services.health_service import HealthService
@@ -96,6 +99,7 @@ def _extract_with_tika(filename: str, payload: bytes, settings: Settings) -> tup
         response.raise_for_status()
         return response.text, "tika"
     except Exception:
+        logger.exception("Tika extraction failed for %s; falling back to native decode", filename)
         return payload.decode("utf-8", errors="ignore"), "native"
 
 
@@ -143,9 +147,12 @@ def _run_ingest(job_id: int) -> None:
         job.status = JobStatus.running.value
         job.stage = "parsing"
         job.started_at = datetime.now(UTC)
+        job.error_message = ""
         document.status = DocumentStatus.processing.value
+        document.error_message = ""
         db.commit()
 
+        started = perf_counter()
         payload = StorageService().read_bytes(document.object_key)
         extracted_text, parser_backend = _extract_text(document.filename, payload, settings)
 
@@ -161,19 +168,27 @@ def _run_ingest(job_id: int) -> None:
             timeout=120.0,
         )
         response.raise_for_status()
-        chunks = response.json().get("chunks", 0)
+        response_payload = response.json()
+        chunks = response_payload.get("chunks", 0)
+        indexed_backends = response_payload.get("indexed_backends", {})
 
         index_task = db.query(ChunkIndexTask).filter(ChunkIndexTask.job_id == job.id).first()
         if index_task is not None:
             index_task.status = JobStatus.succeeded.value
             index_task.item_count = chunks
             index_task.last_message = "indexed"
+            index_task.details_json = {
+                "indexed_backends": indexed_backends,
+                "parser_backend": parser_backend,
+                "duration_ms": int((perf_counter() - started) * 1000),
+            }
 
         job.status = JobStatus.succeeded.value
         job.stage = "completed"
         job.finished_at = datetime.now(UTC)
         document.status = DocumentStatus.indexed.value
         db.commit()
+        INGEST_JOBS_TOTAL.labels(status="succeeded").inc()
     except Exception as exc:
         job = db.get(IngestJob, job_id)
         if job is not None:
@@ -184,7 +199,14 @@ def _run_ingest(job_id: int) -> None:
         if document is not None:
             document.status = DocumentStatus.failed.value
             document.error_message = str(exc)
+        index_task = db.query(ChunkIndexTask).filter(ChunkIndexTask.job_id == job.id).first() if job is not None else None
+        if index_task is not None:
+            index_task.status = JobStatus.failed.value
+            index_task.last_message = str(exc)
+            index_task.details_json = {"error": str(exc)}
         db.commit()
+        INGEST_JOBS_TOTAL.labels(status="failed").inc()
+        log_event(logger, "ingest_failed", job_id=job_id, error=str(exc))
         raise
     finally:
         db.close()
@@ -213,6 +235,7 @@ def _mark_dispatch_failed(job_id: int, reason: str) -> None:
         if index_task is not None:
             index_task.status = JobStatus.failed.value
             index_task.last_message = message
+            index_task.details_json = {"error": message}
 
         db.commit()
     finally:

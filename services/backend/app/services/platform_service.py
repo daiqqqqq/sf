@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import UploadFile, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.errors import AuthAppError, ConflictAppError, NotFoundAppError, ValidationAppError
+from app.core.metrics import BACKUP_LAST_SUCCESS_TIMESTAMP, DOCUMENT_UPLOADS_TOTAL
 from app.core.security import create_token, hash_password, verify_password
 from app.models.entities import (
     AdminUser,
@@ -23,8 +26,9 @@ from app.models.entities import (
     ModelProvider,
     ProviderKind,
     ServiceHealthSnapshot,
+    UserRole,
 )
-from app.schemas.api import KnowledgeBaseCreate, LoginRequest
+from app.schemas.api import KnowledgeBaseCreate, LoginRequest, UserCreateRequest, UserPasswordResetRequest, UserUpdateRequest
 from app.services.events import EventPublisher
 from app.services.storage import StorageService
 from app.utils.text import detect_parser_backend
@@ -45,8 +49,12 @@ class PlatformService:
                 password_hash=hash_password(self.settings.admin_password),
                 is_active=True,
                 is_superuser=True,
+                role=UserRole.superadmin.value,
             )
             self.db.add(admin)
+        else:
+            admin.role = admin.role or UserRole.superadmin.value
+            admin.is_superuser = admin.role == UserRole.superadmin.value
 
         if self.db.scalar(select(func.count(KnowledgeBase.id))) == 0:
             self.db.add(
@@ -121,14 +129,64 @@ class PlatformService:
     def login(self, payload: LoginRequest) -> tuple[AdminUser, dict[str, str]]:
         user = self.db.scalar(select(AdminUser).where(AdminUser.username == payload.username))
         if user is None or not verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+            raise AuthAppError("用户名或密码错误。")
         if not user.is_active:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已禁用")
+            raise AuthAppError("当前账号已被禁用。", status_code=status.HTTP_403_FORBIDDEN, code="inactive_user")
+
         user.last_login_at = datetime.now(UTC)
         self.db.commit()
-        access = create_token(str(user.id), "access", self.settings.access_token_expire_minutes, {"username": user.username})
-        refresh = create_token(str(user.id), "refresh", self.settings.refresh_token_expire_minutes, {"username": user.username})
+        access = create_token(
+            str(user.id),
+            "access",
+            self.settings.access_token_expire_minutes,
+            {"username": user.username, "role": user.role},
+        )
+        refresh = create_token(
+            str(user.id),
+            "refresh",
+            self.settings.refresh_token_expire_minutes,
+            {"username": user.username, "role": user.role},
+        )
         return user, {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+
+    def list_users(self) -> list[AdminUser]:
+        return list(self.db.scalars(select(AdminUser).order_by(AdminUser.id)))
+
+    def create_user(self, payload: UserCreateRequest) -> AdminUser:
+        role = self._normalize_role(payload.role)
+        existing = self.db.scalar(select(AdminUser).where(AdminUser.username == payload.username))
+        if existing is not None:
+            raise ConflictAppError(f"用户 {payload.username} 已存在。")
+        user = AdminUser(
+            username=payload.username,
+            password_hash=hash_password(payload.password),
+            is_active=payload.is_active,
+            is_superuser=role == UserRole.superadmin.value,
+            role=role,
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def update_user(self, user_id: int, payload: UserUpdateRequest) -> AdminUser:
+        user = self._get_user(user_id)
+        if payload.role is not None:
+            role = self._normalize_role(payload.role)
+            user.role = role
+            user.is_superuser = role == UserRole.superadmin.value
+        if payload.is_active is not None:
+            user.is_active = payload.is_active
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def reset_user_password(self, user_id: int, payload: UserPasswordResetRequest) -> AdminUser:
+        user = self._get_user(user_id)
+        user.password_hash = hash_password(payload.password)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
 
     def list_kbs(self) -> list[KnowledgeBase]:
         return list(self.db.scalars(select(KnowledgeBase).order_by(KnowledgeBase.id)))
@@ -136,10 +194,13 @@ class PlatformService:
     def get_kb(self, kb_id: int) -> KnowledgeBase:
         kb = self.db.get(KnowledgeBase, kb_id)
         if kb is None:
-            raise HTTPException(status_code=404, detail="知识库不存在")
+            raise NotFoundAppError("知识库不存在。")
         return kb
 
     def create_kb(self, payload: KnowledgeBaseCreate) -> KnowledgeBase:
+        existing = self.db.scalar(select(KnowledgeBase).where(KnowledgeBase.name == payload.name))
+        if existing is not None:
+            raise ConflictAppError(f"知识库 {payload.name} 已存在。")
         kb = KnowledgeBase(**payload.model_dump())
         self.db.add(kb)
         self.db.commit()
@@ -162,13 +223,17 @@ class PlatformService:
                 size_bytes += len(chunk)
                 if size_bytes > self.settings.max_upload_bytes:
                     temp_path.unlink(missing_ok=True)
-                    raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="上传文件超过限制")
+                    DOCUMENT_UPLOADS_TOTAL.labels(status="failed").inc()
+                    raise ValidationAppError("上传文件超过大小限制。")
                 handle.write(chunk)
         await upload.close()
 
         object_key = f"{kb.id}/{uuid4().hex}/{original_name}"
         try:
             self.storage.save_file(object_key, content_type, temp_path)
+        except Exception:
+            DOCUMENT_UPLOADS_TOTAL.labels(status="failed").inc()
+            raise
         finally:
             temp_path.unlink(missing_ok=True)
 
@@ -184,17 +249,7 @@ class PlatformService:
         self.db.add(document)
         self.db.flush()
 
-        job = IngestJob(
-            document_id=document.id,
-            kb_id=kb.id,
-            status=JobStatus.pending.value,
-            stage="queued",
-        )
-        self.db.add(job)
-        self.db.flush()
-
-        task = ChunkIndexTask(job_id=job.id, backend="hybrid", status=JobStatus.pending.value)
-        self.db.add(task)
+        job = self._create_ingest_job(document)
         self.db.commit()
         self.db.refresh(document)
         self.db.refresh(job)
@@ -209,6 +264,7 @@ class PlatformService:
                 "filename": document.filename,
             },
         )
+        DOCUMENT_UPLOADS_TOTAL.labels(status="success").inc()
         return document, job
 
     def list_documents(self, kb_id: int | None = None) -> list[Document]:
@@ -224,7 +280,7 @@ class PlatformService:
         return list(self.db.scalars(select(ModelProvider).order_by(ModelProvider.priority, ModelProvider.id)))
 
     def list_health_snapshots(self) -> list[ServiceHealthSnapshot]:
-        return list(self.db.scalars(select(ServiceHealthSnapshot).order_by(desc(ServiceHealthSnapshot.checked_at)).limit(20)))
+        return list(self.db.scalars(select(ServiceHealthSnapshot).order_by(desc(ServiceHealthSnapshot.checked_at)).limit(50)))
 
     def list_latest_health_snapshots(self) -> list[ServiceHealthSnapshot]:
         ranked_snapshots = (
@@ -281,30 +337,88 @@ class PlatformService:
         )
         return audit
 
+    def get_backup_status(self) -> dict[str, Any]:
+        path = self.settings.backup_status_file
+        if not path.exists():
+            return {"status": "missing", "message": "尚未生成备份状态文件。"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return {"status": "invalid", "message": f"备份状态文件读取失败：{exc}"}
+        last_success = payload.get("last_success_ts")
+        if isinstance(last_success, (int, float)):
+            BACKUP_LAST_SUCCESS_TIMESTAMP.set(last_success)
+        return payload
+
     def get_overview(self) -> dict[str, Any]:
+        latest_snapshots = self.list_latest_health_snapshots()
+        unhealthy = sum(1 for item in latest_snapshots if item.status != "healthy")
         metrics = {
             "knowledge_bases": int(self.db.scalar(select(func.count(KnowledgeBase.id))) or 0),
             "documents": int(self.db.scalar(select(func.count(Document.id))) or 0),
             "jobs_pending": int(self.db.scalar(select(func.count(IngestJob.id)).where(IngestJob.status == JobStatus.pending.value)) or 0),
             "jobs_running": int(self.db.scalar(select(func.count(IngestJob.id)).where(IngestJob.status == JobStatus.running.value)) or 0),
             "jobs_failed": int(self.db.scalar(select(func.count(IngestJob.id)).where(IngestJob.status == JobStatus.failed.value)) or 0),
+            "jobs_succeeded": int(self.db.scalar(select(func.count(IngestJob.id)).where(IngestJob.status == JobStatus.succeeded.value)) or 0),
+            "unhealthy_services": unhealthy,
         }
         return {
             "metrics": metrics,
-            "service_health": self.list_latest_health_snapshots(),
+            "service_health": latest_snapshots,
             "latest_jobs": self.list_jobs()[:10],
             "latest_audits": self.list_audits()[:10],
+            "backup_status": self.get_backup_status(),
         }
 
     def retry_document(self, document_id: int) -> IngestJob:
         document = self.db.get(Document, document_id)
         if document is None:
-            raise HTTPException(status_code=404, detail="文档不存在")
+            raise NotFoundAppError("文档不存在。")
         document.status = DocumentStatus.queued.value
-        job = IngestJob(document_id=document.id, kb_id=document.kb_id, status=JobStatus.pending.value, stage="queued")
-        self.db.add(job)
-        self.db.flush()
-        self.db.add(ChunkIndexTask(job_id=job.id, backend="hybrid", status=JobStatus.pending.value))
+        document.error_message = ""
+        job = self._create_ingest_job(document)
         self.db.commit()
         self.db.refresh(job)
+        self.events.publish(
+            self.settings.kafka_topic_ingest,
+            {
+                "event": "document.retry",
+                "document_id": document.id,
+                "job_id": job.id,
+                "kb_id": document.kb_id,
+                "filename": document.filename,
+            },
+        )
         return job
+
+    def _create_ingest_job(self, document: Document) -> IngestJob:
+        job = IngestJob(
+            document_id=document.id,
+            kb_id=document.kb_id,
+            status=JobStatus.pending.value,
+            stage="queued",
+        )
+        self.db.add(job)
+        self.db.flush()
+        self.db.add(
+            ChunkIndexTask(
+                job_id=job.id,
+                backend="hybrid",
+                status=JobStatus.pending.value,
+                details_json={"postgres": 0, "elasticsearch": 0, "milvus": 0},
+            )
+        )
+        return job
+
+    def _get_user(self, user_id: int) -> AdminUser:
+        user = self.db.get(AdminUser, user_id)
+        if user is None:
+            raise NotFoundAppError("用户不存在。")
+        return user
+
+    @staticmethod
+    def _normalize_role(role: str) -> str:
+        valid_roles = {item.value for item in UserRole}
+        if role not in valid_roles:
+            raise ValidationAppError(f"无效角色：{role}")
+        return role

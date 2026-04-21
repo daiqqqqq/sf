@@ -22,6 +22,7 @@ COPY app /workspace/app
 COPY tests /workspace/tests
 COPY README.md /workspace/README.md
 COPY requirements /workspace/requirements
+COPY alembic.ini /workspace/alembic.ini
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r /workspace/requirements/production.txt
 
