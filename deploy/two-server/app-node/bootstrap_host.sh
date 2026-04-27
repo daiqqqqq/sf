@@ -32,6 +32,19 @@ install_dependency() {
   fi
 }
 
+selinux_relabel_path() {
+  local target="$1"
+  if ! command -v getenforce >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$(getenforce)" == "Disabled" ]]; then
+    return
+  fi
+  if command -v chcon >/dev/null 2>&1; then
+    chcon -Rt container_file_t "${target}" 2>/dev/null || chcon -Rt svirt_sandbox_file_t "${target}" 2>/dev/null || true
+  fi
+}
+
 command -v curl >/dev/null 2>&1 || install_dependency curl
 
 mkdir -p \
@@ -51,7 +64,13 @@ mkdir -p \
 
 chown -R 1001:1001 "${PERSIST_ROOT}/kafka"
 chown -R 1000:1000 "${PERSIST_ROOT}/elasticsearch"
+chown -R 1000:1000 "${PERSIST_ROOT}/backups/elasticsearch-repository"
+chown -R 472:472 "${PERSIST_ROOT}/grafana"
 chmod -R u+rwX,g+rwX "${PERSIST_ROOT}/kafka" "${PERSIST_ROOT}/elasticsearch"
+chmod -R u+rwX,g+rwX "${PERSIST_ROOT}/grafana"
+chmod -R a+rX "${PERSIST_ROOT}/backups/elasticsearch-repository"
+
+selinux_relabel_path "${PERSIST_ROOT}"
 
 cat >/etc/sysctl.d/99-rag-platform.conf <<EOF
 vm.max_map_count=262144

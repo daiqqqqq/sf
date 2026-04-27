@@ -59,3 +59,10 @@ docker compose --env-file .env -f docker-compose.yml restart platform-api rag-en
 ./backup_stack.sh
 ./restore_stack.sh <snapshot-timestamp>
 ```
+
+## GPU Monitoring Acceptance
+
+- [ ] GPU exporter is reachable: `curl http://192.168.110.241:9400/metrics`
+- [ ] Prometheus target `gpu-exporter` is `UP`
+- [ ] Grafana dashboard `RAG Platform GPU` is visible
+- [ ] Platform page `/gpu` shows device load, memory, temperature, and power

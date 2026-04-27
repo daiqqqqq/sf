@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_name: str = "Dual Server RAG Platform"
     api_prefix: str = "/api"
+    app_host: str = "127.0.0.1"
     data_root: Path = Field(default=Path("/workspace/data"), validation_alias="APP_DATA_ROOT")
     logs_root: Path = Field(default=Path("/workspace/logs"))
     startup_timeout_seconds: int = 180
@@ -86,7 +87,13 @@ class Settings(BaseSettings):
     rrf_k: int = 60
 
     prometheus_port: int = 9090
+    prometheus_url: str = "http://prometheus:9090"
     grafana_port: int = 3000
+    grafana_external_url: str = ""
+    grafana_gpu_dashboard_uid: str = "rag-platform-gpu"
+    gpu_node_host: str = "192.168.110.241"
+    gpu_exporter_port: int = 9400
+    gpu_exporter_job_name: str = "gpu-exporter"
     backup_root: Path = Field(default=Path("/opt/rag-platform/backups"))
     backup_retention_daily: int = 7
     backup_retention_weekly: int = 4
@@ -96,6 +103,15 @@ class Settings(BaseSettings):
     @property
     def allowed_service_names(self) -> list[str]:
         return [item.strip() for item in self.docker_allowed_services.split(",") if item.strip()]
+
+    @property
+    def grafana_gpu_dashboard_url(self) -> str:
+        base_url = self.grafana_external_url or f"http://{self.app_host}:{self.grafana_port}"
+        return f"{base_url.rstrip('/')}/d/{self.grafana_gpu_dashboard_uid}"
+
+    @property
+    def gpu_exporter_instance(self) -> str:
+        return f"{self.gpu_node_host}:{self.gpu_exporter_port}"
 
 
 @lru_cache(maxsize=1)

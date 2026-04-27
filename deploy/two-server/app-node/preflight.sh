@@ -45,6 +45,8 @@ app_port="$(read_env APP_PORT)"
 ollama_url="$(read_env OLLAMA_BASE_URL)"
 vllm27_url="$(read_env VLLM_QWEN27_BASE_URL)"
 vllm35_url="$(read_env VLLM_QWEN35_BASE_URL)"
+gpu_node_host="$(read_env GPU_NODE_HOST)"
+gpu_exporter_port="$(read_env GPU_EXPORTER_PORT)"
 persist_root="$(read_env PERSIST_ROOT)"
 persist_root="${persist_root:-/opt/rag-platform}"
 persist_probe="${persist_root%/*}"
@@ -91,6 +93,14 @@ for raw in sys.argv[1:]:
     print(f"{parsed.hostname}:{parsed.port}")
 PY
 )
+
+gpu_node_host="${gpu_node_host:-192.168.110.241}"
+gpu_exporter_port="${gpu_exporter_port:-9400}"
+echo "Checking GPU exporter endpoint..."
+check_tcp "${gpu_node_host}" "${gpu_exporter_port}" || {
+  echo "Unable to connect to GPU exporter ${gpu_node_host}:${gpu_exporter_port}. Deploy dcgm-exporter on the GPU node first." >&2
+  exit 1
+}
 
 echo "Checking local port conflicts..."
 for port in "${app_port:-80}" 5432 6379 9092 9000 9200 19530 9998 9090 3000; do

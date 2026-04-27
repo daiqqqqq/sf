@@ -7,9 +7,16 @@ export function StatusPill({ status }: StatusPillProps) {
   const tone =
     normalized.includes("healthy") || normalized.includes("indexed") || normalized.includes("success") || normalized.includes("enabled")
       ? "success"
-      : normalized.includes("running") || normalized.includes("pending") || normalized.includes("queued")
+      : normalized.includes("running") ||
+          normalized.includes("pending") ||
+          normalized.includes("queued") ||
+          normalized.includes("warning") ||
+          normalized.includes("degraded")
         ? "warning"
-        : normalized.includes("failed") || normalized.includes("unhealthy") || normalized.includes("disabled")
+        : normalized.includes("failed") ||
+            normalized.includes("unhealthy") ||
+            normalized.includes("disabled") ||
+            normalized.includes("unreachable")
           ? "danger"
           : "neutral";
 

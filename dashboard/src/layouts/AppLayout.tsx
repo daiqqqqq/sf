@@ -5,20 +5,21 @@ export function AppLayout() {
   const { user, logout, canOperateContainers, canRunRag } = useAuth();
 
   const navItems = [
-    { to: "/", label: "总览", visible: true },
-    { to: "/containers", label: "容器与服务", visible: canOperateContainers },
-    { to: "/knowledge", label: "知识库", visible: true },
-    { to: "/documents", label: "文档与任务", visible: true },
-    { to: "/models", label: "模型连接", visible: true },
-    { to: "/rag", label: "RAG 调试", visible: canRunRag },
-    { to: "/settings", label: "系统设置", visible: true },
-    { to: "/audit", label: "审计日志", visible: true }
+    { to: "/", label: "Overview", visible: true },
+    { to: "/containers", label: "Containers", visible: canOperateContainers },
+    { to: "/knowledge", label: "Knowledge", visible: true },
+    { to: "/documents", label: "Documents", visible: true },
+    { to: "/models", label: "Models", visible: true },
+    { to: "/gpu", label: "GPU Monitor", visible: true },
+    { to: "/rag", label: "RAG Debug", visible: canRunRag },
+    { to: "/settings", label: "Settings", visible: true },
+    { to: "/audit", label: "Audit", visible: true }
   ];
 
   const roleLabel = {
-    superadmin: "超级管理员",
-    operator: "运维操作员",
-    viewer: "只读审计员"
+    superadmin: "Superadmin",
+    operator: "Operator",
+    viewer: "Viewer"
   }[user?.role ?? "viewer"];
 
   return (
@@ -40,10 +41,10 @@ export function AppLayout() {
         <div className="sidebar-footer">
           <div className="user-card">
             <span>{roleLabel}</span>
-            <strong>{user?.username ?? "未登录"}</strong>
+            <strong>{user?.username ?? "Anonymous"}</strong>
           </div>
           <button className="ghost-button" onClick={logout} type="button">
-            退出登录
+            Sign out
           </button>
         </div>
       </aside>

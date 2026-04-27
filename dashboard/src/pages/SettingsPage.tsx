@@ -1,27 +1,34 @@
 import { FormEvent, useEffect, useState } from "react";
 import { apiRequest } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
-import { useAuth } from "../hooks/useAuth";
+import { UserRole, useAuth } from "../hooks/useAuth";
 
 type UserItem = {
   id: number;
   username: string;
-  role: "superadmin" | "operator" | "viewer";
+  role: UserRole;
   is_active: boolean;
   last_login_at?: string | null;
+};
+
+type UserForm = {
+  username: string;
+  password: string;
+  role: UserRole;
+  is_active: boolean;
 };
 
 const defaultUserForm = {
   username: "",
   password: "",
-  role: "viewer" as const,
+  role: "viewer" as UserRole,
   is_active: true
-};
+} satisfies UserForm;
 
 export function SettingsPage() {
   const { user, session, canManageUsers } = useAuth();
   const [users, setUsers] = useState<UserItem[]>([]);
-  const [form, setForm] = useState(defaultUserForm);
+  const [form, setForm] = useState<UserForm>(defaultUserForm);
   const [resetPassword, setResetPassword] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
 

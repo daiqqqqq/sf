@@ -50,6 +50,18 @@ docker compose --env-file .env -f docker-compose.yml restart platform-api rag-en
 
 ## systemd
 
+## GPU Monitoring
+
+GPU utilization monitoring depends on an external exporter running on the GPU node `192.168.110.241`.
+
+- Exporter endpoint: `http://192.168.110.241:9400/metrics`
+- Prometheus scrape job: `gpu-exporter`
+- Grafana dashboard UID: `rag-platform-gpu`
+
+Before running `preflight.sh` or accepting the deployment, deploy the exporter by following:
+
+- [deploy/two-server/gpu-node/README.md](/d:/study/1/sf/deploy/two-server/gpu-node/README.md)
+
 `bootstrap_host.sh` 会安装两个 unit：
 
 - `rag-platform.service`：控制整套 Compose 堆栈

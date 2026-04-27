@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api import audit, auth, containers, documents, jobs, knowledge, models, rag, system
+from app.api import audit, auth, containers, documents, gpu, jobs, knowledge, models, rag, system
 from app.core.config import get_settings
 from app.core.metrics import metrics_response
 from app.core.web import install_common_handlers
@@ -39,6 +39,7 @@ install_common_handlers(app, service_name="platform-api")
 app.include_router(auth.router)
 app.include_router(system.router)
 app.include_router(containers.router)
+app.include_router(gpu.router)
 app.include_router(knowledge.router)
 app.include_router(documents.router)
 app.include_router(jobs.router)

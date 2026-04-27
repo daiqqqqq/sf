@@ -45,3 +45,7 @@ scrape_configs:
   - job_name: redis-exporter
     static_configs:
       - targets: ["redis-exporter:9121"]
+
+  - job_name: gpu-exporter
+    static_configs:
+      - targets: ["192.168.110.241:9400"]

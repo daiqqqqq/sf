@@ -57,6 +57,12 @@ x-backend-env: &backend-env
   BACKUP_WINDOW_CRON: ${BACKUP_WINDOW_CRON}
   BACKUP_STATUS_FILE: ${BACKUP_STATUS_FILE}
   RRF_K: ${RRF_K}
+  PROMETHEUS_URL: ${PROMETHEUS_URL}
+  GRAFANA_EXTERNAL_URL: ${GRAFANA_EXTERNAL_URL}
+  GRAFANA_GPU_DASHBOARD_UID: ${GRAFANA_GPU_DASHBOARD_UID}
+  GPU_NODE_HOST: ${GPU_NODE_HOST}
+  GPU_EXPORTER_PORT: ${GPU_EXPORTER_PORT}
+  GPU_EXPORTER_JOB_NAME: ${GPU_EXPORTER_JOB_NAME}
 
 x-backend-image: &backend-image rag-platform-backend:latest
 
@@ -67,6 +73,9 @@ services:
       context: ../../../services/backend
       dockerfile: Dockerfile
       target: api
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL}
     container_name: rag-db-migrate
     restart: "no"
     depends_on:
@@ -79,9 +88,9 @@ services:
     networks:
       - rag-net
     volumes:
-      - ${PERSIST_ROOT}/logs:/workspace/logs
-      - ${APP_DATA_ROOT}:/workspace/data
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${PERSIST_ROOT}/logs:/workspace/logs:Z
+      - ${APP_DATA_ROOT}:/workspace/data:Z
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
 
   nginx:
     image: nginx:1.27-alpine
@@ -128,6 +137,9 @@ services:
       context: ../../../services/backend
       dockerfile: Dockerfile
       target: api
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL}
     container_name: rag-platform-api
     restart: unless-stopped
     depends_on:
@@ -150,9 +162,9 @@ services:
     networks:
       - rag-net
     volumes:
-      - ${PERSIST_ROOT}/logs:/workspace/logs
-      - ${APP_DATA_ROOT}:/workspace/data
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${PERSIST_ROOT}/logs:/workspace/logs:Z
+      - ${APP_DATA_ROOT}:/workspace/data:Z
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
       interval: 20s
@@ -184,9 +196,9 @@ services:
     networks:
       - rag-net
     volumes:
-      - ${PERSIST_ROOT}/logs:/workspace/logs
-      - ${APP_DATA_ROOT}:/workspace/data
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${PERSIST_ROOT}/logs:/workspace/logs:Z
+      - ${APP_DATA_ROOT}:/workspace/data:Z
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=3)"]
       interval: 20s
@@ -233,9 +245,9 @@ services:
     networks:
       - rag-net
     volumes:
-      - ${PERSIST_ROOT}/logs:/workspace/logs
-      - ${APP_DATA_ROOT}:/workspace/data
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${PERSIST_ROOT}/logs:/workspace/logs:Z
+      - ${APP_DATA_ROOT}:/workspace/data:Z
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker_healthcheck"]
       interval: 20s
@@ -261,8 +273,8 @@ services:
     networks:
       - rag-net
     volumes:
-      - ${PERSIST_ROOT}/logs:/workspace/logs
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${PERSIST_ROOT}/logs:/workspace/logs:Z
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
 
   ops-agent:
     image: *backend-image
@@ -277,7 +289,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/workspace/deploy/two-server/app-node/docker-compose.yml:ro
-      - ${BACKUP_ROOT}:${BACKUP_ROOT}
+      - ${BACKUP_ROOT}:${BACKUP_ROOT}:Z
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/healthz', timeout=3)"]
       interval: 20s
@@ -295,7 +307,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: ${TZ}
     volumes:
-      - ${PERSIST_ROOT}/postgres:/var/lib/postgresql/data
+      - ${PERSIST_ROOT}/postgres:/var/lib/postgresql/data:Z
     networks:
       - rag-net
     healthcheck:
@@ -311,7 +323,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - ${PERSIST_ROOT}/redis:/data
+      - ${PERSIST_ROOT}/redis:/data:Z
     networks:
       - rag-net
     healthcheck:
@@ -340,7 +352,7 @@ services:
       KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
       TZ: ${TZ}
     volumes:
-      - ${PERSIST_ROOT}/kafka:/bitnami/kafka
+      - ${PERSIST_ROOT}/kafka:/bitnami/kafka:Z
     networks:
       - rag-net
 
@@ -354,7 +366,7 @@ services:
       TZ: ${TZ}
     command: server /data --console-address :9001
     volumes:
-      - ${PERSIST_ROOT}/minio:/data
+      - ${PERSIST_ROOT}/minio:/data:Z
     networks:
       - rag-net
 
@@ -390,7 +402,7 @@ services:
       - --auto-compaction-mode=revision
       - --auto-compaction-retention=1000
     volumes:
-      - ${PERSIST_ROOT}/milvus/etcd:/etcd
+      - ${PERSIST_ROOT}/milvus/etcd:/etcd:Z
     networks:
       - rag-net
 
@@ -405,9 +417,13 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
       TZ: ${TZ}
     volumes:
-      - ${PERSIST_ROOT}/milvus/data:/var/lib/milvus
+      - ${PERSIST_ROOT}/milvus/data:/var/lib/milvus:Z
     networks:
       - rag-net
 
@@ -422,8 +438,8 @@ services:
       path.repo: /opt/backups/es-repository
       TZ: ${TZ}
     volumes:
-      - ${PERSIST_ROOT}/elasticsearch:/usr/share/elasticsearch/data
-      - ${BACKUP_ROOT}/elasticsearch-repository:/opt/backups/es-repository
+      - ${PERSIST_ROOT}/elasticsearch:/usr/share/elasticsearch/data:Z
+      - ${BACKUP_ROOT}/elasticsearch-repository:/opt/backups/es-repository:Z
     networks:
       - rag-net
 
@@ -447,7 +463,7 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
-      - ${PERSIST_ROOT}/prometheus:/prometheus
+      - ${PERSIST_ROOT}/prometheus:/prometheus:Z
     networks:
       - rag-net
 
@@ -468,7 +484,7 @@ services:
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - ${PERSIST_ROOT}/grafana:/var/lib/grafana
+      - ${PERSIST_ROOT}/grafana:/var/lib/grafana:Z
     networks:
       - rag-net
 

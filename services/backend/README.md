@@ -34,4 +34,12 @@
 python -m compileall app tests
 ```
 
+## GPU Monitoring API
+
+The platform API exposes a read-only GPU overview endpoint:
+
+- `GET /api/gpu/overview`
+
+It aggregates Prometheus GPU exporter metrics and model endpoint reachability into one response for the platform dashboard.
+
 如果需要验证混合检索和监控栈，请在 Linux Docker 环境中按应用服务器 Compose 启动。

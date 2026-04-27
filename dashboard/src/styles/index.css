@@ -176,6 +176,89 @@ a {
   gap: 18px;
 }
 
+.gpu-status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.gpu-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 181, 71, 0.08), transparent 40%),
+    rgba(10, 21, 39, 0.88);
+  backdrop-filter: blur(12px);
+}
+
+.gpu-device-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.gpu-device-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(15, 140, 255, 0.08), transparent 48%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.gpu-device-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.gpu-device-header p {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+}
+
+.gpu-meter-block {
+  display: grid;
+  gap: 8px;
+}
+
+.gpu-meter {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.gpu-meter-bar {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.gpu-meter-bar.accent {
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+.gpu-meter-bar.info {
+  background: linear-gradient(90deg, rgba(15, 140, 255, 0.65), rgba(96, 196, 255, 0.95));
+}
+
+.gpu-device-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inline-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .document-workspace {
   align-items: start;
 }
@@ -605,6 +688,8 @@ textarea {
     align-items: flex-start;
   }
 
+  .gpu-status-strip,
+  .gpu-device-stats,
   .spotlight-grid,
   .task-track {
     grid-template-columns: 1fr;

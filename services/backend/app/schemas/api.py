@@ -162,6 +162,47 @@ class OverviewResponse(BaseModel):
     backup_status: dict[str, Any] = Field(default_factory=dict)
 
 
+class GpuDeviceRead(BaseModel):
+    id: str
+    label: str
+    uuid: str | None = None
+    model_name: str | None = None
+    status: str
+    utilization_percent: float | None = None
+    memory_used_mb: float | None = None
+    memory_total_mb: float | None = None
+    memory_utilization_percent: float | None = None
+    temperature_celsius: float | None = None
+    power_watts: float | None = None
+    sample_time: datetime | None = None
+
+
+class GpuServiceStatusRead(BaseModel):
+    name: str
+    base_url: str
+    status: str
+    response_ms: int | None = None
+    detail: str = ""
+
+
+class GpuOverviewResponse(BaseModel):
+    node_host: str
+    node_status: str
+    exporter_status: str
+    prometheus_status: str
+    sampled_at: datetime | None = None
+    gpu_count: int
+    total_memory_mb: float
+    used_memory_mb: float
+    average_utilization_percent: float | None = None
+    max_temperature_celsius: float | None = None
+    total_power_watts: float | None = None
+    grafana_url: str
+    warnings: list[str] = Field(default_factory=list)
+    devices: list[GpuDeviceRead] = Field(default_factory=list)
+    model_services: list[GpuServiceStatusRead] = Field(default_factory=list)
+
+
 class AuditListResponse(BaseModel):
     items: list[ContainerAuditRead]
 

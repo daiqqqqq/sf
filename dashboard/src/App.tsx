@@ -5,6 +5,7 @@ import { useAuth } from "./hooks/useAuth";
 import { AuditPage } from "./pages/AuditPage";
 import { ContainersPage } from "./pages/ContainersPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
+import { GpuPage } from "./pages/GpuPage";
 import { KnowledgeBasesPage } from "./pages/KnowledgeBasesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModelsPage } from "./pages/ModelsPage";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/knowledge" element={<KnowledgeBasesPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/models" element={<ModelsPage />} />
+        <Route path="/gpu" element={<GpuPage />} />
         <Route path="/rag" element={<GuardedRoute allowed={canRunRag} element={<RagPage />} />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/audit" element={<AuditPage />} />
